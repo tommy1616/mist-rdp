@@ -333,27 +333,36 @@ function wireHudAutoHide() {
 
 let autoResizeTimer = null;
 
+// Ask the server to match the visible area when the active session is set to "自動".
+// Safe to call at any time: it does nothing when the remote size already matches.
+function applyAutoResize() {
+  if (state.activeTabId === 'home') return;
+  const sess = state.sessions.get(state.activeTabId);
+  if (!sess || sess.state !== 'connected') return;
+  // Only auto-resize sessions configured to "自動" (requestedW === 0 && requestedH === 0)
+  if (sess.requestedW !== 0 || sess.requestedH !== 0) return;
+
+  const [w, h] = calcAutoResolution();
+  if (Math.abs(w - sess.fbW) <= 4 && Math.abs(h - sess.fbH) <= 4) return;
+  // Do not repeat the same request in a burst, but do repeat it later: the remote size still
+  // differing means the earlier request never took effect.
+  const last = sess.lastAutoResize;
+  if (last && last[0] === w && last[1] === h && Date.now() - last[2] < 3000) return;
+
+  sess.lastAutoResize = [w, h, Date.now()];
+  invoke?.('rdp_resize', { sessionId: sess.id, width: w, height: h });
+}
+
+function scheduleAutoResize(delay = 350) {
+  clearTimeout(autoResizeTimer);
+  autoResizeTimer = setTimeout(applyAutoResize, delay);
+}
+
 function setupAutoResizeObserver() {
   const deck = $('canvasDeck');
   if (typeof ResizeObserver === 'undefined' || !deck) return;
 
-  const observer = new ResizeObserver(() => {
-    clearTimeout(autoResizeTimer);
-    autoResizeTimer = setTimeout(() => {
-      if (state.activeTabId === 'home') return;
-      const sess = state.sessions.get(state.activeTabId);
-      if (!sess || sess.state !== 'connected') return;
-      // Only auto-resize sessions configured to "自動" (requestedW === 0 && requestedH === 0)
-      if (sess.requestedW !== 0 || sess.requestedH !== 0) return;
-
-      const [w, h] = calcAutoResolution();
-      if (Math.abs(w - sess.fbW) <= 4 && Math.abs(h - sess.fbH) <= 4) return;
-      if (sess.lastAutoResize && sess.lastAutoResize[0] === w && sess.lastAutoResize[1] === h) return;
-
-      sess.lastAutoResize = [w, h];
-      invoke?.('rdp_resize', { sessionId: sess.id, width: w, height: h });
-    }, 350);
-  });
+  const observer = new ResizeObserver(() => scheduleAutoResize());
   observer.observe(deck);
 }
 
@@ -671,6 +680,9 @@ function handleSessionStatus(payload) {
       sess.locksSynced = false;
       setTimeout(() => sess.canvas?.focus(), 20);
     }
+    // The window may have been resized while this session was still connecting (the observer
+    // skips sessions that are not connected yet), so re-check once the session is up.
+    if (payload.state === 'connected') scheduleAutoResize(250);
   }
 }
 
@@ -953,6 +965,7 @@ function selectTab(id) {
       invoke?.('set_active_rdp_tab', { sessionId: id });
       invoke?.('set_keyboard_hook', { enabled: sess.hookEnabled });
       renderActiveRdpChrome(sess);
+      scheduleAutoResize(250);
       setTimeout(() => {
         sess.canvas.focus();
         if (document.activeElement === sess.canvas) {

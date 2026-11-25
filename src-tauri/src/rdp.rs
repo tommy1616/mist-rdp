@@ -1533,6 +1533,12 @@ async fn run_session(
     let mut rdpdr_poll_tick = tokio::time::interval(Duration::from_millis(80));
     rdpdr_poll_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
 
+    // Latest resize the UI asked for that the server has not received yet (see `SessionInput::Resize`).
+    let mut pending_resize: Option<(u32, u32)> = None;
+    let mut pending_resize_attempts: u32 = 0;
+    let mut resize_retry_tick = tokio::time::interval(Duration::from_millis(400));
+    resize_retry_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+
     // Watchdog for Windows Server hosts that hold back the initial (or post-DeactivateAll)
     // desktop paint until the client nudges with SuppressOutput toggle / RefreshRectangle.
     let mut graphics_updates_since_activate: u64 = 0;
@@ -1654,9 +1660,24 @@ async fn run_session(
                                 SessionInput::Resize { width, height } => {
                                     let w = u32::from(width.clamp(640, 4096) & !1);
                                     let h = u32::from(height.clamp(480, 2160) & !1);
-                                    if let Some(Ok(frame)) = active_stage.encode_resize(w, h, Some(100), None) {
-                                        if !frame.is_empty() {
-                                            let _ = writer.write_all(&frame).await;
+                                    // The display-control channel opens a moment after the session
+                                    // becomes active. A request made before that used to be dropped
+                                    // silently; keep it and retry until the server has it.
+                                    pending_resize = Some((w, h));
+                                    pending_resize_attempts = 0;
+                                    match active_stage.encode_resize(w, h, Some(100), None) {
+                                        Some(Ok(frame)) => {
+                                            if !frame.is_empty() {
+                                                writer.write_all(&frame).await.context("寫入 RDP 資料失敗")?;
+                                            }
+                                            info!(session_id = %sid, w, h, "Resize request sent");
+                                            pending_resize = None;
+                                        }
+                                        Some(Err(e)) => {
+                                            warn!(session_id = %sid, w, h, %e, "Resize request could not be encoded; will retry");
+                                        }
+                                        None => {
+                                            info!(session_id = %sid, w, h, "Display control channel not ready; resize queued");
                                         }
                                     }
                                 }
@@ -2055,6 +2076,27 @@ async fn run_session(
                                 let _ = writer.write_all(&frame).await;
                             }
                         }
+                    }
+                }
+            }
+
+            _ = resize_retry_tick.tick(), if pending_resize.is_some() => {
+                if let Some((w, h)) = pending_resize {
+                    pending_resize_attempts += 1;
+                    match active_stage.encode_resize(w, h, Some(100), None) {
+                        Some(Ok(frame)) => {
+                            if !frame.is_empty() {
+                                writer.write_all(&frame).await.context("寫入 RDP 資料失敗")?;
+                            }
+                            info!(session_id = %sid, w, h, attempts = pending_resize_attempts, "Queued resize request sent");
+                            pending_resize = None;
+                        }
+                        // ~30 s of retries: a server without display control never resizes.
+                        _ if pending_resize_attempts >= 75 => {
+                            warn!(session_id = %sid, w, h, "Server never opened the display control channel; giving up on resize");
+                            pending_resize = None;
+                        }
+                        _ => {}
                     }
                 }
             }
