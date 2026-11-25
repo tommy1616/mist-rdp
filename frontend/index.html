@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MistRDP</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app-window">
+  <!-- Custom Frameless Titlebar + Tabs + Top 3 Custom Window Buttons -->
+  <header class="titlebar" id="titlebar">
+    <div class="brand" id="dragBrand">
+      <div class="brand-mark">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+      </div>
+      <span>MistRDP</span>
+    </div>
+
+    <div class="tab-strip" id="tabStrip"></div>
+
+    <button class="tab-add" id="btnAddTab" title="新增連線">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    </button>
+
+    <div class="titlebar-drag-spacer" id="dragSpacer"></div>
+
+    <button type="button" class="titlebar-hook-btn hidden on" id="btnTitlebarHook" title="系統快捷鍵（Alt+Tab / Win）轉送至遠端，點擊改為本機切換">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M8 14h8"/></svg>
+      <span id="titlebarHookLabel">快捷鍵：遠端</span>
+    </button>
+
+    <div class="win-controls">
+      <button class="win-btn" id="btnWinMin" title="最小化">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      </button>
+      <button class="win-btn" id="btnWinMax" title="最大化">
+        <svg id="iconMax" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>
+      </button>
+      <button class="win-btn close" id="btnWinClose" title="關閉">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <main class="workspace">
+    <!-- Vault Gate -->
+    <section class="vault-gate hidden" id="viewVaultGate">
+      <div class="gate-card">
+        <div class="gate-head">
+          <div class="gate-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          </div>
+          <h2 id="gateTitle">解鎖保管庫</h2>
+        </div>
+
+        <form id="gateForm" class="gate-form">
+          <div class="field">
+            <label for="gatePwd">主密碼</label>
+            <input id="gatePwd" type="password" autocomplete="current-password" required>
+          </div>
+          <div class="field hidden" id="gateConfirmWrap">
+            <label for="gatePwdConfirm">確認主密碼</label>
+            <input id="gatePwdConfirm" type="password" autocomplete="new-password">
+          </div>
+          <div class="switch-row compact">
+            <strong>記住主密碼</strong>
+            <button type="button" class="toggle" id="toggleGateRemember"></button>
+          </div>
+          <div class="gate-error hidden" id="gateError"></div>
+          <div class="gate-actions">
+            <button type="button" class="btn" id="btnGateImport">匯入</button>
+            <button type="submit" class="btn btn-primary" id="btnGateSubmit">解鎖</button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <!-- Main Layout -->
+    <section class="home-layout hidden" id="viewHome">
+      <aside class="sidebar">
+        <div class="nav-list">
+          <div class="nav-item active" data-nav="hosts">
+            <span class="nav-left">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="4" width="20" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>
+              全部主機
+            </span>
+            <span class="nav-count" id="navHostCount">0</span>
+          </div>
+          <div class="nav-item" data-nav="settings">
+            <span class="nav-left">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.26.604.852.997 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+              設定
+            </span>
+          </div>
+        </div>
+
+        <div id="groupNavWrap" class="hidden">
+          <div class="nav-group-label">群組</div>
+          <div id="groupNavList"></div>
+        </div>
+
+        <div class="sidebar-bottom">
+          <button class="btn btn-sm hidden" id="btnSidebarSync" style="width:100%; justify-content:center;">立即同步</button>
+          <button class="btn btn-sm" id="btnLockVault" style="width:100%; justify-content:center;">鎖定</button>
+        </div>
+      </aside>
+
+      <div class="main-pane">
+        <!-- Quick Connect Bar -->
+        <div class="quick-bar">
+          <input id="quickAddr" class="quick-host" type="text" placeholder="主機 IP / 網域">
+          <span class="quick-sep">:</span>
+          <input id="quickPort" class="quick-port" type="number" min="1" max="65535" placeholder="3389">
+          <select id="quickRes" class="quick-select"></select>
+          <button class="btn btn-primary" id="btnQuickConnect">連線</button>
+        </div>
+
+        <!-- Hosts Panel -->
+        <div id="panelHosts" class="panel-stack">
+          <div class="section-head">
+            <div class="section-title" id="hostsTitle">全部主機</div>
+            <button class="btn btn-primary" id="btnNewHost">新增主機</button>
+          </div>
+          <div class="host-grid" id="hostGrid"></div>
+          <div class="empty-state hidden" id="hostEmpty">尚無主機</div>
+        </div>
+
+        <!-- Settings Panel -->
+        <div id="panelSettings" class="panel-stack hidden">
+          <div class="section-head">
+            <div class="section-title">設定</div>
+          </div>
+
+          <div class="settings-card">
+            <div class="switch-row">
+              <strong>系統鑰匙圈記住主密碼</strong>
+              <button type="button" class="toggle" id="toggleRememberKeychain"></button>
+            </div>
+
+            <div class="switch-row">
+              <strong>macOS Command 對應 Ctrl</strong>
+              <button type="button" class="toggle on" id="toggleMacCmd"></button>
+            </div>
+
+            <div class="switch-row">
+              <strong>允許自簽 TLS 憑證</strong>
+              <button type="button" class="toggle on" id="toggleSelfSigned"></button>
+            </div>
+
+            <div class="switch-row">
+              <strong>保管庫檔案</strong>
+              <div style="display:flex; gap:8px;">
+                <button class="btn btn-sm" id="btnExportVault">匯出</button>
+                <button class="btn btn-sm" id="btnImportVault">匯入</button>
+              </div>
+            </div>
+
+            <div class="vault-path-box">
+              <code id="settingsVaultPath">—</code>
+            </div>
+          </div>
+
+          <div class="settings-card" id="syncCard">
+            <div class="sync-head">
+              <strong>零知識同步</strong>
+              <span class="tag" id="syncStatusTag">未啟用</span>
+            </div>
+
+            <div class="field">
+              <label for="syncMode">同步方式</label>
+              <select id="syncMode">
+                <option value="disabled">關閉</option>
+                <option value="folder">同步資料夾（iCloud / OneDrive / Syncthing）</option>
+                <option value="webdav">WebDAV（NAS / Nextcloud）</option>
+              </select>
+            </div>
+
+            <div id="syncFolderWrap" class="panel-stack hidden">
+              <div class="field">
+                <label for="syncFolderPreset">快捷路徑</label>
+                <select id="syncFolderPreset"></select>
+              </div>
+              <div class="field">
+                <label for="syncFolderPath">資料夾路徑</label>
+                <input id="syncFolderPath" class="mono" placeholder="選擇或貼上同步資料夾絕對路徑">
+              </div>
+            </div>
+
+            <div id="syncWebDavWrap" class="panel-stack hidden">
+              <div class="field-row">
+                <div class="field" style="flex:2;">
+                  <label for="syncDavUrl">WebDAV 網址</label>
+                  <input id="syncDavUrl" class="mono" placeholder="https://nas.example.com/dav/mistrdp/">
+                </div>
+                <div class="field" style="flex:1;">
+                  <label for="syncDavFile">同步檔名</label>
+                  <input id="syncDavFile" class="mono" placeholder="mist-rdp.vault.json">
+                </div>
+              </div>
+              <div class="field-row">
+                <div class="field" style="flex:1;">
+                  <label for="syncDavUser">帳號</label>
+                  <input id="syncDavUser" placeholder="選填">
+                </div>
+                <div class="field" style="flex:1;">
+                  <label for="syncDavPwd" style="display:flex; justify-content:space-between; align-items:center;">
+                    <span>密碼（系統鑰匙圈）</span>
+                    <button type="button" class="link-btn hidden" id="btnSyncClearPwd">清除已存密碼</button>
+                  </label>
+                  <input id="syncDavPwd" type="password" placeholder="密碼">
+                </div>
+              </div>
+              <div class="switch-row compact">
+                <strong>允許自簽 TLS 憑證</strong>
+                <button type="button" class="toggle" id="toggleSyncDavInsecure"></button>
+              </div>
+            </div>
+
+            <div class="switch-row compact hidden" id="syncAutoRow">
+              <strong>解鎖與異動時自動同步</strong>
+              <button type="button" class="toggle on" id="toggleSyncAuto"></button>
+            </div>
+
+            <div class="sync-actions">
+              <button class="btn btn-sm" id="btnSyncTest">測試連線</button>
+              <button class="btn btn-sm" id="btnSyncSave">儲存</button>
+              <button class="btn btn-sm btn-primary" id="btnSyncNow">立即同步</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Active RDP Session -->
+    <section class="rdp-stage hidden" id="viewRdp">
+      <div class="rdp-hud-zone" id="rdpHudZone">
+        <div class="hud-handle" id="hudHandle" title="顯示工具列"><span></span></div>
+        <div class="rdp-hud" id="rdpHud">
+          <button class="hud-pill hud-icon-btn" id="btnHudPin" title="釘選工具列">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></svg>
+          </button>
+          <button class="hud-pill on" id="btnHudLossless" title="無損 32-bit 清晰畫質，點擊切換為 RemoteFX 省頻寬模式">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12l4 6-10 13L2 9z"/><path d="M2 9h20"/></svg>
+            <span id="hudLosslessText">無損畫質</span>
+          </button>
+          <button class="hud-pill on" id="btnHudAudio" title="聲音開啟，點擊靜音">
+            <svg id="hudAudioIcon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+            <span id="hudAudioText">聲音</span>
+          </button>
+          <span class="hud-pill on hidden" id="hudShareBadge" style="cursor:default;">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+            <span>共享</span>
+          </span>
+          <div class="hud-sep"></div>
+          <button class="hud-pill" id="btnHudCad">Ctrl+Alt+Del</button>
+          <select id="hudResSelect" class="hud-select" title="解析度"></select>
+          <span class="hud-stat" id="hudTelemetry">連線中</span>
+          <div class="hud-sep"></div>
+          <button class="hud-pill hud-icon-btn" id="btnHudMinimize" title="最小化">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="5" y1="14" x2="19" y2="14"/></svg>
+          </button>
+          <button class="hud-pill hud-icon-btn" id="btnHudFullscreen" title="全螢幕">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+          </button>
+          <button class="hud-pill" style="color:var(--status-danger)" id="btnHudDisconnect">斷線</button>
+        </div>
+      </div>
+
+      <div class="canvas-deck" id="canvasDeck"></div>
+
+      <div class="session-overlay hidden" id="sessionOverlay">
+        <div class="overlay-card" id="overlayCard">
+          <div class="spinner" id="overlaySpinner"></div>
+          <h3 id="overlayTitle">連線中...</h3>
+          <p id="overlayMsg"></p>
+          <div class="overlay-actions hidden" id="overlayActions">
+            <button class="btn" id="btnOverlayClose">關閉分頁</button>
+            <button class="btn btn-primary hidden" id="btnOverlayReprompt">重新輸入密碼</button>
+            <button class="btn btn-primary" id="btnOverlayRetry">重新連線</button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- Host + Account Unified Modal -->
+<div class="modal-backdrop" id="hostModal">
+  <div class="modal">
+    <h3 id="hostModalTitle">新增主機</h3>
+    <input type="hidden" id="hostId">
+    <div class="field-row">
+      <div class="field" style="flex:1.4;">
+        <label for="hostName">名稱</label>
+        <input id="hostName" placeholder="選填">
+      </div>
+      <div class="field" style="flex:1;">
+        <label for="hostGroup">群組</label>
+        <input id="hostGroup" placeholder="選填">
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field" style="flex:2.2;">
+        <label for="hostAddr">位址</label>
+        <input id="hostAddr" class="mono" placeholder="IP 或網域">
+      </div>
+      <div class="field" style="flex:0.9;">
+        <label for="hostPort">Port</label>
+        <input id="hostPort" class="mono" type="number" min="1" max="65535" placeholder="3389">
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field" style="flex:1;">
+        <label for="hostResPreset">解析度</label>
+        <select id="hostResPreset"></select>
+      </div>
+      <div class="field" style="flex:1;">
+        <label for="hostSharePreset">共享資料夾</label>
+        <select id="hostSharePreset"></select>
+      </div>
+    </div>
+    <div class="field-row hidden" id="hostCustomResRow">
+      <div class="field" style="flex:1;">
+        <label for="hostCustomW">寬度</label>
+        <input id="hostCustomW" class="mono" type="number" min="640" max="4096" step="2" value="1920">
+      </div>
+      <div class="field" style="flex:1;">
+        <label for="hostCustomH">高度</label>
+        <input id="hostCustomH" class="mono" type="number" min="480" max="2160" step="2" value="1080">
+      </div>
+    </div>
+    <div class="field hidden" id="hostSharePathWrap">
+      <label for="hostSharePath">資料夾路徑</label>
+      <input id="hostSharePath" class="mono" placeholder="本機資料夾絕對路徑">
+    </div>
+    <div class="field-row">
+      <div class="field" style="flex:1;">
+        <label for="hostUser">帳號</label>
+        <input id="hostUser" placeholder="使用者或 DOMAIN\user">
+      </div>
+      <div class="field" style="flex:1;">
+        <label for="hostPwd">密碼</label>
+        <input id="hostPwd" type="password">
+      </div>
+    </div>
+    <div class="switch-grid-2col">
+      <div class="switch-row compact">
+        <strong>記住密碼</strong>
+        <button type="button" class="toggle on" id="toggleHostSavePwd"></button>
+      </div>
+      <div class="switch-row compact">
+        <strong>剪貼簿共用</strong>
+        <button type="button" class="toggle on" id="toggleHostClip"></button>
+      </div>
+      <div class="switch-row compact">
+        <strong>快捷鍵鎖定</strong>
+        <button type="button" class="toggle on" id="toggleHostHook"></button>
+      </div>
+      <div class="switch-row compact">
+        <strong>聲音回傳</strong>
+        <button type="button" class="toggle on" id="toggleHostAudio"></button>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" id="btnHostCancel">取消</button>
+      <button class="btn btn-primary" id="btnHostSave">儲存</button>
+    </div>
+  </div>
+</div>
+
+<!-- Prompt Credentials Modal -->
+<div class="modal-backdrop" id="promptModal">
+  <div class="modal">
+    <h3 id="promptTitle">輸入帳號密碼</h3>
+    <div class="gate-error hidden" id="promptErr"></div>
+    <div class="field" id="promptUserWrap">
+      <label for="promptUser">帳號</label>
+      <input id="promptUser" placeholder="使用者或 DOMAIN\user">
+    </div>
+    <div class="field">
+      <label for="promptPwd">密碼</label>
+      <input id="promptPwd" type="password">
+    </div>
+    <div class="switch-row compact hidden" id="promptUpdateWrap">
+      <strong>同時更新已存密碼</strong>
+      <button type="button" class="toggle on" id="togglePromptUpdate"></button>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" id="btnPromptCancel">取消</button>
+      <button class="btn btn-primary" id="btnPromptConfirm">連線</button>
+    </div>
+  </div>
+</div>
+
+<!-- Import Vault Modal -->
+<div class="modal-backdrop" id="importModal">
+  <div class="modal">
+    <h3>匯入保管庫</h3>
+    <div class="field">
+      <label for="importFile">檔案</label>
+      <input id="importFile" type="file" accept=".json">
+    </div>
+    <div class="field">
+      <label for="importPwd">主密碼</label>
+      <input id="importPwd" type="password">
+    </div>
+    <div class="modal-actions">
+      <button class="btn" id="btnImportCancel">取消</button>
+      <button class="btn btn-primary" id="btnImportConfirm">匯入</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,22 @@
+# Build outputs
+/src-tauri/target/
+/src-tauri/gen/
+/dist/
+*.exe
+*.dmg
+*.zip
+*.app/
+
+# Personal vault, sync config & rolling backups (never commit!)
+*.vault.json
+mist-rdp.sync.json
+.mist-rdp-backups/
+*.tmp
+
+# OS & editor junk
+.DS_Store
+Thumbs.db
+Desktop.ini
+.vscode/
+.idea/
+*.log
