@@ -613,13 +613,26 @@ pub struct ConnectParams {
     pub lossless_quality: bool,
     pub shared_folder: Option<String>,
     pub accept_self_signed_tls: bool,
+    /// Desktop scale factor in percent (100-500). The UI sends the display's pixel ratio in
+    /// auto-size mode so the remote UI is drawn at the local logical size, not tiny.
+    #[serde(default = "default_desktop_scale")]
+    pub scale: u32,
+}
+
+fn default_desktop_scale() -> u32 {
+    100
+}
+
+/// Clamp to the range the protocol accepts.
+fn normalize_desktop_scale(scale: u32) -> u32 {
+    scale.clamp(100, 500)
 }
 
 #[derive(Debug)]
 pub enum SessionInput {
     FastPath(Vec<FastPathInputEvent>),
     Clipboard(ClipboardMessage),
-    Resize { width: u16, height: u16 },
+    Resize { width: u16, height: u16, scale: u32 },
     Disconnect,
 }
 
@@ -1244,10 +1257,10 @@ impl RdpManager {
         self.send_fastpath(session_id, events);
     }
 
-    pub fn resize(&self, session_id: &str, width: u16, height: u16) {
+    pub fn resize(&self, session_id: &str, width: u16, height: u16, scale: u32) {
         if let Ok(map) = self.sessions.lock() {
             if let Some(h) = map.get(session_id) {
-                let _ = h.tx.send(SessionInput::Resize { width, height });
+                let _ = h.tx.send(SessionInput::Resize { width, height, scale });
             }
         }
     }
@@ -1336,10 +1349,18 @@ async fn run_session(
         multitransport_flags: None,
         support_dyn_vc_gfx_protocol: false,
         performance_flags: default_performance_flags(),
-        desktop_scale_factor: 0,
+        desktop_scale_factor: if params.scale > 100 { normalize_desktop_scale(params.scale) } else { 0 },
         desktop_physical_size: None,
         desktop_orientation: None,
-        device_scale_factor: None,
+        device_scale_factor: if params.scale > 100 {
+            Some(match normalize_desktop_scale(params.scale) {
+                0..=139 => 100,
+                140..=179 => 140,
+                _ => 180,
+            })
+        } else {
+            None
+        },
         monitor_extended_layout: None,
         relative_mouse_input: false,
         hardware_id: None,
@@ -1577,7 +1598,7 @@ async fn run_session(
     rdpdr_poll_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
 
     // Latest resize the UI asked for that the server has not received yet (see `SessionInput::Resize`).
-    let mut pending_resize: Option<(u32, u32)> = None;
+    let mut pending_resize: Option<(u32, u32, u32)> = None;
     let mut pending_resize_attempts: u32 = 0;
     let mut resize_retry_tick = tokio::time::interval(Duration::from_millis(400));
     resize_retry_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
@@ -1700,15 +1721,16 @@ async fn run_session(
                                         }
                                     }
                                 }
-                                SessionInput::Resize { width, height } => {
+                                SessionInput::Resize { width, height, scale } => {
+                                    let scale = normalize_desktop_scale(scale);
                                     let w = u32::from(width.clamp(640, 4096) & !1);
                                     let h = u32::from(height.clamp(480, 2160) & !1);
                                     // The display-control channel opens a moment after the session
                                     // becomes active. A request made before that used to be dropped
                                     // silently; keep it and retry until the server has it.
-                                    pending_resize = Some((w, h));
+                                    pending_resize = Some((w, h, scale));
                                     pending_resize_attempts = 0;
-                                    match active_stage.encode_resize(w, h, Some(100), None) {
+                                    match active_stage.encode_resize(w, h, Some(scale), None) {
                                         Some(Ok(frame)) => {
                                             if !frame.is_empty() {
                                                 writer.write_all(&frame).await.context("寫入 RDP 資料失敗")?;
@@ -2124,9 +2146,9 @@ async fn run_session(
             }
 
             _ = resize_retry_tick.tick(), if pending_resize.is_some() => {
-                if let Some((w, h)) = pending_resize {
+                if let Some((w, h, scale)) = pending_resize {
                     pending_resize_attempts += 1;
-                    match active_stage.encode_resize(w, h, Some(100), None) {
+                    match active_stage.encode_resize(w, h, Some(scale), None) {
                         Some(Ok(frame)) => {
                             if !frame.is_empty() {
                                 writer.write_all(&frame).await.context("寫入 RDP 資料失敗")?;
@@ -2590,6 +2612,7 @@ mod tests {
                 lossless_quality: true,
                 shared_folder: None,
                 accept_self_signed_tls: true,
+                scale: 100,
             })
         });
 

@@ -193,6 +193,16 @@
               <div class="settings-card">
                 <div class="field"><label data-i18n="language" for="settingsLang">語言</label><select id="settingsLang"><option value="zh-TW">繁體中文</option><option value="en">English</option></select></div>
               </div>
+              <div class="settings-card" id="updateCard">
+                <strong data-i18n="appUpdate">軟體更新</strong>
+                <div class="muted" id="updateStatus">—</div>
+                <div class="update-bar hidden" id="updateBar"><span id="updateBarFill"></span></div>
+                <div class="field-row">
+                  <button data-i18n="checkUpdate" type="button" class="btn" id="btnCheckUpdate">檢查更新</button>
+                  <button data-i18n="installUpdate" type="button" class="btn btn-primary hidden" id="btnInstallUpdate">下載並更新</button>
+                </div>
+                <label class="check-row"><input type="checkbox" id="chkAutoUpdateCheck" /> <span data-i18n="autoCheckUpdate">啟動時自動檢查更新</span></label>
+              </div>
               <div class="settings-card" id="appSecuritySettings">
                 <strong data-i18n="appLock">App 鎖定</strong>
                 <details id="appPasswordSettings">

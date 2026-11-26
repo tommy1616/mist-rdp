@@ -890,3 +890,10 @@ details .app-security-form { margin-top:8px; }
   padding: 0;
 }
 .link-btn:hover { text-decoration: underline; }
+
+#updateCard { display: grid; gap: 10px; }
+#updateCard .field-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.update-bar { height: 6px; border-radius: 3px; background: rgba(127,127,127,.25); overflow: hidden; }
+.update-bar span { display: block; height: 100%; width: 0; background: var(--accent, #39c5bb); transition: width .15s linear; }
+#updateStatus { font-size: 13px; opacity: .85; }
+#updateStatus.danger { color: var(--status-danger); opacity: 1; }

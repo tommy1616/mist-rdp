@@ -165,5 +165,19 @@ window.I18N['zh-TW'] = {
   "webdavUsername": "WebDAV 帳號",
   "webdavVaults": "WebDAV 保管庫",
   "width": "寬度",
-  "hosts": "主機"
+  "hosts": "主機",
+  "appUpdate": "軟體更新",
+  "checkUpdate": "檢查更新",
+  "installUpdate": "下載並更新",
+  "autoCheckUpdate": "啟動時自動檢查更新",
+  "updateChecking": "正在檢查…",
+  "updateLatest": "已是最新版本（{current}）",
+  "updateAvailable": "有新版本 {latest}（目前 {current}）",
+  "updateNotInstallable": "有新版本 {latest}，但這個平台無法自動更新，請到 GitHub Releases 下載",
+  "updateCheckFailed": "檢查更新失敗：{error}",
+  "updateDownloading": "下載中 {percent}%",
+  "updateApplying": "驗證完成，正在更新並重新啟動…",
+  "updateFailed": "更新失敗：{error}",
+  "updateConfirmSessions": "目前有遠端連線，更新會中斷所有連線並重新啟動，要繼續請再按一次按鈕",
+  "updateToast": "有新版本 {latest}，可到設定更新"
 };

@@ -165,5 +165,19 @@ window.I18N['en'] = {
   "webdavUsername": "WebDAV username",
   "webdavVaults": "WebDAV vaults",
   "width": "Width",
-  "hosts": "Hosts"
+  "hosts": "Hosts",
+  "appUpdate": "Software update",
+  "checkUpdate": "Check for updates",
+  "installUpdate": "Download and update",
+  "autoCheckUpdate": "Check for updates at startup",
+  "updateChecking": "Checking…",
+  "updateLatest": "You are up to date ({current})",
+  "updateAvailable": "New version {latest} available (current {current})",
+  "updateNotInstallable": "New version {latest} is available, but this platform cannot update automatically. Please download it from GitHub Releases",
+  "updateCheckFailed": "Update check failed: {error}",
+  "updateDownloading": "Downloading {percent}%",
+  "updateApplying": "Verified. Updating and restarting…",
+  "updateFailed": "Update failed: {error}",
+  "updateConfirmSessions": "Remote sessions are open. Updating disconnects them and restarts the app. Press the button again to continue.",
+  "updateToast": "New version {latest} available. Update from Settings"
 };

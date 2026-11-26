@@ -3498,7 +3498,7 @@ dependencies = [
 
 [[package]]
 name = "mist-rdp"
-version = "0.2.18"
+version = "0.2.20"
 dependencies = [
  "aes-gcm 0.10.3",
  "anyhow",
@@ -3526,6 +3526,7 @@ dependencies = [
  "rustls",
  "serde",
  "serde_json",
+ "sha2 0.11.1",
  "tauri",
  "tauri-build",
  "tokio",

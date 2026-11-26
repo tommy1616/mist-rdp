@@ -8,6 +8,7 @@ mod mac_clipboard;
 mod profiles;
 mod rdp;
 mod sync;
+mod update;
 mod vault;
 mod ws_stream;
 
@@ -130,6 +131,18 @@ struct RdpConnectRequest {
     lossless_quality: bool,
     #[serde(default)]
     shared_folder: Option<String>,
+    #[serde(default)]
+    scale: Option<u32>,
+}
+
+#[tauri::command]
+async fn update_check() -> Result<update::UpdateInfo, String> {
+    update::check().await.map_err(|e| format!("{e:#}"))
+}
+
+#[tauri::command]
+async fn update_install(app: tauri::AppHandle) -> Result<(), String> {
+    update::install(app).await.map_err(|e| format!("{e:#}"))
 }
 
 #[tauri::command]
@@ -665,6 +678,7 @@ fn rdp_connect(state: State<'_, AppState>, req: RdpConnectRequest) -> Result<(),
             lossless_quality: req.lossless_quality,
             shared_folder,
             accept_self_signed_tls,
+            scale: req.scale.unwrap_or(100),
         })
         .map_err(|e| format!("{e:#}"))
 }
@@ -756,8 +770,8 @@ fn rdp_release_modifiers(state: State<'_, AppState>, session_id: String) {
 }
 
 #[tauri::command]
-fn rdp_resize(state: State<'_, AppState>, session_id: String, width: u16, height: u16) {
-    state.rdp.resize(&session_id, width, height);
+fn rdp_resize(state: State<'_, AppState>, session_id: String, width: u16, height: u16, scale: Option<u32>) {
+    state.rdp.resize(&session_id, width, height, scale.unwrap_or(100));
 }
 
 #[tauri::command]
@@ -976,6 +990,7 @@ fn main() {
     let _ = rustls::crypto::ring::default_provider().install_default();
 
     init_tracing_logger();
+    update::cleanup_after_update();
 
     let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
     let rt_handle = rt.handle().clone();
@@ -1113,6 +1128,8 @@ fn main() {
             app_lock,
             app_unlock,
             get_bootstrap_info,
+            update_check,
+            update_install,
             get_default_share_folders,
             vault_status,
             vault_try_auto_unlock,

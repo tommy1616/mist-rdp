@@ -117,6 +117,16 @@ function calcAutoResolution() {
   return [w, h];
 }
 
+// Desktop scale (percent) sent to the server. In auto-size mode the remote desktop is as large as
+// the window in physical pixels, so on a HiDPI display (Retina, 150% Windows) the server must be
+// told to draw its UI at that scale, as mstsc / Windows App do; otherwise everything looks tiny.
+// Fixed resolutions stay at 100%.
+function desktopScaleFor(sess) {
+  if (sess && (sess.requestedW || sess.requestedH)) return 100;
+  const pct = Math.round(((window.devicePixelRatio || 1) * 100) / 25) * 25;
+  return Math.max(100, Math.min(500, pct));
+}
+
 function resolveRequestedSize(w, h) {
   if (w >= 640 && h >= 480) {
     return [Math.min(4096, w) & ~1, Math.min(2160, h) & ~1];
@@ -333,7 +343,7 @@ function applyAutoResize() {
   if (last && last[0] === w && last[1] === h && Date.now() - last[2] < 3000) return;
 
   sess.lastAutoResize = [w, h, Date.now()];
-  invoke?.('rdp_resize', { sessionId: sess.id, width: w, height: h });
+  invoke?.('rdp_resize', { sessionId: sess.id, width: w, height: h, scale: desktopScaleFor(sess) });
 }
 
 function scheduleAutoResize(delay = 350) {
@@ -412,6 +422,7 @@ async function loadWorkspace() {
   renderTabs();
   await initializeVaults(info.vault_status, profiles);
   state.workspaceLoaded = true;
+  if (!state.updateUiReady) { state.updateUiReady = true; initUpdateUi(); }
   renderVaultGate();
 }
 
@@ -995,7 +1006,8 @@ async function connectSessionTransport(sess, width, height) {
         clipboard_enabled: sess.clipEnabled,
         audio_enabled: sess.audioEnabled,
         lossless_quality: sess.losslessQuality,
-        shared_folder: sess.sharedFolder || null
+        shared_folder: sess.sharedFolder || null,
+        scale: desktopScaleFor(sess)
       }
     });
   } catch (err) {
@@ -1387,7 +1399,7 @@ function wireUiEvents() {
     sess.requestedW = preset ? preset.w : 0;
     sess.requestedH = preset ? preset.h : 0;
     sess.lastAutoResize = null;
-    invoke?.('rdp_resize', { sessionId: sess.id, width: w, height: h });
+    invoke?.('rdp_resize', { sessionId: sess.id, width: w, height: h, scale: desktopScaleFor(sess) });
     notify(tr('resolutionValue', { w, h }));
     setTimeout(() => sess.canvas?.focus(), 20);
   };
@@ -1702,3 +1714,77 @@ window.addEventListener('i18n-changed', () => {
 });
 
 bootstrap().catch(error => notify(String(error),true));
+
+// ---- Self-update (GitHub Releases) ----
+const AUTO_UPDATE_KEY = 'mistrdp.autoUpdateCheck';
+let updateBusy = false;
+function setUpdateStatus(text, danger = false) {
+  const el = $('updateStatus');
+  el.textContent = text;
+  el.classList.toggle('danger', danger);
+}
+async function checkForUpdate(silent) {
+  if (!invoke || updateBusy) return;
+  state.updateConfirmed = false;
+  if (!silent) setUpdateStatus(tr('updateChecking'));
+  try {
+    const info = await invoke('update_check');
+    state.updateInfo = info;
+    $('btnInstallUpdate').classList.toggle('hidden', !(info.available && info.installable));
+    if (!info.available) {
+      setUpdateStatus(tr('updateLatest', { current: info.current }));
+    } else if (!info.installable) {
+      setUpdateStatus(tr('updateNotInstallable', { latest: info.latest }));
+    } else {
+      setUpdateStatus(tr('updateAvailable', { latest: info.latest, current: info.current }));
+    }
+    if (silent && info.available) notify(tr('updateToast', { latest: info.latest }));
+  } catch (err) {
+    if (!silent) setUpdateStatus(tr('updateCheckFailed', { error: err }), true);
+  }
+}
+async function installUpdate() {
+  if (!invoke || updateBusy || !state.updateInfo?.available) return;
+  if (state.sessions.size > 0 && !state.updateConfirmed) {
+    state.updateConfirmed = true;
+    setUpdateStatus(tr('updateConfirmSessions'), true);
+    return;
+  }
+  updateBusy = true;
+  $('btnInstallUpdate').disabled = true;
+  $('btnCheckUpdate').disabled = true;
+  $('updateBar').classList.remove('hidden');
+  $('updateBarFill').style.width = '0%';
+  setUpdateStatus(tr('updateDownloading', { percent: 0 }));
+  try {
+    await invoke('update_install');
+  } catch (err) {
+    updateBusy = false;
+    state.updateConfirmed = false;
+    $('btnInstallUpdate').disabled = false;
+    $('btnCheckUpdate').disabled = false;
+    $('updateBar').classList.add('hidden');
+    setUpdateStatus(tr('updateFailed', { error: err }), true);
+  }
+}
+function initUpdateUi() {
+  const auto = $('chkAutoUpdateCheck');
+  auto.checked = localStorage.getItem(AUTO_UPDATE_KEY) !== '0';
+  auto.addEventListener('change', () => localStorage.setItem(AUTO_UPDATE_KEY, auto.checked ? '1' : '0'));
+  $('btnCheckUpdate').addEventListener('click', () => checkForUpdate(false));
+  $('btnInstallUpdate').addEventListener('click', installUpdate);
+  if (window.__TAURI__?.event?.listen) {
+    window.__TAURI__.event.listen('update-progress', (ev) => {
+      const p = ev.payload || {};
+      if (p.stage === 'applying') {
+        $('updateBarFill').style.width = '100%';
+        setUpdateStatus(tr('updateApplying'));
+      } else if (p.total) {
+        const percent = Math.min(100, Math.floor((p.done / p.total) * 100));
+        $('updateBarFill').style.width = percent + '%';
+        setUpdateStatus(tr('updateDownloading', { percent }));
+      }
+    });
+  }
+  if (auto.checked) setTimeout(() => checkForUpdate(true), 3000);
+}

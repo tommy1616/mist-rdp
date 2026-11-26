@@ -24,6 +24,7 @@ It ships with a **zero-knowledge encrypted vault** that you can sync across devi
 - **Zero-knowledge vault**: hosts and passwords are stored only after Argon2id + AES-256-GCM encryption. A WebDAV server only ever sees ciphertext.
 - **Bring your own storage**: sync through your own WebDAV / NAS. No account to register and no cloud service that can be shut down.
 - **Fits companies and teams**: run your own WebDAV server (a NAS, Nextcloud, Apache / nginx, and so on) and a team can share a host list. Everything stays on your intranet or your own machines with no third-party cloud, and the server only stores ciphertext, so even its administrator cannot read the passwords.
+- **In-app updates**: Settings can check for and install updates (Windows and macOS). It downloads from GitHub Releases, verifies the SHA-256 digest, then replaces itself. On startup it contacts GitHub to look for a new version, and you can turn this off in Settings. Files downloaded by the updater do not get the macOS quarantine flag; the first install still needs the manual step.
 - **Multiple vaults**: a local vault and any number of WebDAV vaults side by side, each with its own vault password, groups, hosts and sync settings, shown as columns on the home board.
 - **App lock**: a separate app master password. Auto-lock is off by default; when enabled it is **suspended while any remote tab is open**.
 - **Two-way clipboard, audio and folder sharing**: copy and paste text, images and files, play remote sound, and mount a local folder as a drive in the remote session.
