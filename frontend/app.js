@@ -416,6 +416,7 @@ async function loadWorkspace() {
 }
 
 const wsTextDecoder = new TextDecoder();
+const wsTextEncoder = new TextEncoder();
 const POINTER_CACHE_MAX = 64;
 const pointerCache = new Map();
 let pointerCanvas = null;
@@ -514,6 +515,42 @@ function markDirtyRect(sess, x, y, w, h) {
     if (y0 < sess.dirtyMinY) sess.dirtyMinY = y0;
     if (x1 > sess.dirtyMaxX) sess.dirtyMaxX = x1;
     if (y1 > sess.dirtyMaxY) sess.dirtyMaxY = y1;
+  }
+}
+
+// Keyboard input goes over the ordered loopback socket (IPC calls can reorder or stall).
+function sendInputFrame(kind, sid, body) {
+  const ws = state.ws;
+  if (!ws || ws.readyState !== WebSocket.OPEN) return false;
+  const sidBytes = wsTextEncoder.encode(sid);
+  const frame = new Uint8Array(3 + sidBytes.length + body.length);
+  frame[0] = kind;
+  frame[1] = sidBytes.length & 0xff;
+  frame[2] = sidBytes.length >> 8;
+  frame.set(sidBytes, 3);
+  frame.set(body, 3 + sidBytes.length);
+  ws.send(frame);
+  return true;
+}
+
+function sendKey(sid, scancode, extended, pressed) {
+  const flags = (extended ? 1 : 0) | (pressed ? 2 : 0);
+  if (!sendInputFrame(0x10, sid, [scancode, flags])) {
+    invoke?.('rdp_key', { sessionId: sid, scancode, extended, pressed });
+  }
+}
+
+function sendUnicode(sid, codeUnit, pressed) {
+  if (!sendInputFrame(0x11, sid, [codeUnit & 0xff, codeUnit >> 8, pressed ? 1 : 0])) {
+    invoke?.('rdp_unicode', { sessionId: sid, codeUnit, pressed });
+  }
+}
+
+const MOUSE_ACTIONS = { move: 0, down: 1, up: 2, wheel: 3, hwheel: 4 };
+function sendMouse(sid, x, y, button, action, wheelDelta) {
+  const d = wheelDelta & 0xffff;
+  if (!sendInputFrame(0x12, sid, [x & 0xff, x >> 8, y & 0xff, y >> 8, button, MOUSE_ACTIONS[action], d & 0xff, d >> 8])) {
+    invoke?.('rdp_mouse', { sessionId: sid, x, y, button, action, wheelDelta });
   }
 }
 
@@ -1042,20 +1079,20 @@ function bindCanvasInput(canvas, sid) {
     if (now - lastMove < 8) return;
     lastMove = now;
     const [x, y] = mapCoords(e);
-    invoke?.('rdp_mouse', { sessionId: sid, x, y, button: 0, action: 'move', wheelDelta: 0 });
+    sendMouse(sid, x, y, 0, 'move', 0);
   });
 
   canvas.addEventListener('mousedown', (e) => {
     e.preventDefault();
     canvas.focus();
     const [x, y] = mapCoords(e);
-    invoke?.('rdp_mouse', { sessionId: sid, x, y, button: e.button, action: 'down', wheelDelta: 0 });
+    sendMouse(sid, x, y, e.button, 'down', 0);
   });
 
   canvas.addEventListener('mouseup', (e) => {
     e.preventDefault();
     const [x, y] = mapCoords(e);
-    invoke?.('rdp_mouse', { sessionId: sid, x, y, button: e.button, action: 'up', wheelDelta: 0 });
+    sendMouse(sid, x, y, e.button, 'up', 0);
   });
 
   canvas.addEventListener('wheel', (e) => {
@@ -1063,10 +1100,10 @@ function bindCanvasInput(canvas, sid) {
     const [x, y] = mapCoords(e);
     if (Math.abs(e.deltaY) >= Math.abs(e.deltaX)) {
       const delta = e.deltaY > 0 ? -120 : 120;
-      invoke?.('rdp_mouse', { sessionId: sid, x, y, button: 0, action: 'wheel', wheelDelta: delta });
+      sendMouse(sid, x, y, 0, 'wheel', delta);
     } else if (e.deltaX !== 0) {
       const delta = e.deltaX > 0 ? 120 : -120;
-      invoke?.('rdp_mouse', { sessionId: sid, x, y, button: 0, action: 'hwheel', wheelDelta: delta });
+      sendMouse(sid, x, y, 0, 'hwheel', delta);
     }
   }, { passive: false });
 
@@ -1177,7 +1214,7 @@ function bindCanvasInput(canvas, sid) {
     const sc = resolveScancode(e);
     if (!sc) return;
     e.preventDefault();
-    invoke?.('rdp_key', { sessionId: sid, scancode: sc[0], extended: sc[1], pressed: true });
+    sendKey(sid, sc[0], sc[1], true);
   });
 
   canvas.addEventListener('keyup', (e) => {
@@ -1189,15 +1226,15 @@ function bindCanvasInput(canvas, sid) {
     const sc = resolveScancode(e);
     if (!sc) return;
     e.preventDefault();
-    invoke?.('rdp_key', { sessionId: sid, scancode: sc[0], extended: sc[1], pressed: false });
+    sendKey(sid, sc[0], sc[1], false);
   });
 
   canvas.addEventListener('compositionend', (e) => {
     const text = e.data || '';
     for (let i = 0; i < text.length; i++) {
       const cu = text.charCodeAt(i);
-      invoke?.('rdp_unicode', { sessionId: sid, codeUnit: cu, pressed: true });
-      invoke?.('rdp_unicode', { sessionId: sid, codeUnit: cu, pressed: false });
+      sendUnicode(sid, cu, true);
+      sendUnicode(sid, cu, false);
     }
   });
 }

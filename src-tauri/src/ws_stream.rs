@@ -1,7 +1,7 @@
 use futures_util::{SinkExt, StreamExt};
 use rand::RngCore;
 use serde::Serialize;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use tokio::net::TcpListener;
 use tokio::sync::broadcast;
 use tokio_tungstenite::tungstenite::Message;
@@ -25,7 +25,11 @@ pub struct StreamHub {
     pub port: u16,
     pub token: String,
     tx: broadcast::Sender<Arc<Vec<u8>>>,
+    input: Arc<Mutex<Option<InputSink>>>,
 }
+
+/// Receives raw input frames sent by the WebView over the same ordered loopback socket.
+pub type InputSink = Arc<dyn Fn(&[u8]) + Send + Sync>;
 
 #[derive(Debug, Serialize)]
 pub struct SessionStatusPayload<'a> {
@@ -40,6 +44,12 @@ pub struct SessionStatusPayload<'a> {
 }
 
 impl StreamHub {
+    pub fn set_input_sink(&self, sink: InputSink) {
+        if let Ok(mut g) = self.input.lock() {
+            *g = Some(sink);
+        }
+    }
+
     pub async fn start() -> anyhow::Result<Self> {
         let listener = TcpListener::bind("127.0.0.1:0").await?;
         let port = listener.local_addr()?.port();
@@ -56,7 +66,9 @@ impl StreamHub {
             port,
             token: token.clone(),
             tx: tx.clone(),
+            input: Arc::new(Mutex::new(None)),
         };
+        let input_slot = hub.input.clone();
 
         tokio::spawn(async move {
             loop {
@@ -67,6 +79,7 @@ impl StreamHub {
                         let _ = stream.set_nodelay(true);
                         let expected_token = token.clone();
                         let mut rx = tx.subscribe();
+                        let input_slot = input_slot.clone();
                         tokio::spawn(async move {
                             let mut authorized = false;
                             let ws_res = tokio_tungstenite::accept_hdr_async(
@@ -112,7 +125,14 @@ impl StreamHub {
 
                             let (mut sink, mut source) = ws.split();
                             let read_task = tokio::spawn(async move {
-                                while let Some(Ok(_)) = source.next().await {}
+                                while let Some(Ok(msg)) = source.next().await {
+                                    if let Message::Binary(data) = msg {
+                                        let sink = input_slot.lock().ok().and_then(|g| g.clone());
+                                        if let Some(sink) = sink {
+                                            sink(&data);
+                                        }
+                                    }
+                                }
                             });
 
                             loop {

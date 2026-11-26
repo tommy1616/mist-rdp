@@ -3498,7 +3498,7 @@ dependencies = [
 
 [[package]]
 name = "mist-rdp"
-version = "0.2.17"
+version = "0.2.18"
 dependencies = [
  "aes-gcm 0.10.3",
  "anyhow",

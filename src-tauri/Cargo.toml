@@ -1,6 +1,6 @@
 [package]
 name = "mist-rdp"
-version = "0.2.17"
+version = "0.2.18"
 description = "MistRDP — Cross-platform Rust + Web RDP client powered by IronRDP & Tauri v2"
 authors = ["SHXJ"]
 license = "MIT"

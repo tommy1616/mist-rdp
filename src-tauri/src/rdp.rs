@@ -830,11 +830,54 @@ pub fn classify_error_text(raw: &str) -> (&'static str, String) {
 
 impl RdpManager {
     pub fn new(hub: StreamHub, rt: TokioHandle) -> Self {
-        Self {
+        let manager = Self {
             sessions: Arc::new(Mutex::new(HashMap::new())),
             active_clip_gen: Arc::new(AtomicU64::new(0)),
             hub,
             rt,
+        };
+        let input = manager.clone();
+        manager
+            .hub
+            .set_input_sink(Arc::new(move |frame| input.handle_ws_input(frame)));
+        manager
+    }
+
+    /// Keyboard frames from the WebView arrive over the ordered loopback socket:
+    /// `0x10 | sid_len u16 | sid | scancode | flags(1=extended,2=pressed)` and
+    /// `0x11 | sid_len u16 | sid | code_unit u16 | pressed` and
+    /// `0x12 | sid_len u16 | sid | x u16 | y u16 | button | action(0 move,1 down,2 up,3 wheel,4 hwheel) | delta i16`.
+    fn handle_ws_input(&self, frame: &[u8]) {
+        let (Some(&kind), Some(len)) = (frame.first(), frame.get(1..3)) else { return };
+        let sid_end = 3 + u16::from_le_bytes([len[0], len[1]]) as usize;
+        let (Some(sid), Some(body)) = (
+            frame.get(3..sid_end).and_then(|b| std::str::from_utf8(b).ok()),
+            frame.get(sid_end..),
+        ) else { return };
+        match (kind, body) {
+            (0x10, [sc, flags]) => self.send_key(sid, *sc, flags & 1 != 0, flags & 2 != 0),
+            (0x11, [lo, hi, pressed]) => {
+                self.send_unicode(sid, u16::from_le_bytes([*lo, *hi]), *pressed != 0)
+            }
+            (0x12, [x0, x1, y0, y1, button, action, d0, d1]) => {
+                let action = match action {
+                    0 => "move",
+                    1 => "down",
+                    2 => "up",
+                    3 => "wheel",
+                    4 => "hwheel",
+                    _ => return,
+                };
+                self.send_mouse(
+                    sid,
+                    u16::from_le_bytes([*x0, *x1]),
+                    u16::from_le_bytes([*y0, *y1]),
+                    *button,
+                    action,
+                    i16::from_le_bytes([*d0, *d1]),
+                );
+            }
+            _ => {}
         }
     }
 
@@ -2569,6 +2612,30 @@ mod tests {
             false
         });
         assert!(saw_error, "expected RDP task to report TCP connect error over StreamHub");
+    }
+
+    #[test]
+    fn ws_input_frames_become_ordered_key_events() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let hub = rt.block_on(StreamHub::start()).unwrap();
+        let mgr = RdpManager::new(hub, rt.handle().clone());
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        mgr.sessions.lock().unwrap().insert(
+            "s1".into(),
+            SessionHandle { generation: 1, tx, audio_enabled: Arc::new(AtomicBool::new(true)) },
+        );
+        mgr.handle_ws_input(&[0x10, 2, 0, b's', b'1', 0x1E, 2]);
+        mgr.handle_ws_input(&[0x10, 2, 0, b's', b'1', 0x1E, 0]);
+        mgr.handle_ws_input(&[0x11, 2, 0, b's', b'1', 0x41, 0x00, 1]);
+        mgr.handle_ws_input(&[0x10, 9, 0, b's', b'1']); // truncated: ignored
+        let mut got = Vec::new();
+        while let Ok(SessionInput::FastPath(ev)) = rx.try_recv() {
+            got.push(ev);
+        }
+        assert_eq!(got.len(), 3);
+        assert!(matches!(got[0][0], FastPathInputEvent::KeyboardEvent(f, 0x1E) if !f.contains(KeyboardFlags::RELEASE)));
+        assert!(matches!(got[1][0], FastPathInputEvent::KeyboardEvent(f, 0x1E) if f.contains(KeyboardFlags::RELEASE)));
+        assert!(matches!(got[2][0], FastPathInputEvent::UnicodeKeyboardEvent(_, 0x41)));
     }
 
     #[test]
