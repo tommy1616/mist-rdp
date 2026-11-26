@@ -7,7 +7,7 @@ function markAppActivity() { lastAppInput = Date.now(); }
 function updateAppSecurity(status) {
   Object.assign(appGate,status);
   markAppActivity();
-  $('appPasswordSummary').textContent = appGate.configured ? '更換 App 主密碼' : '設定 App 主密碼';
+  $('appPasswordSummary').textContent = appGate.configured ? tr('changeAppPassword') : tr('setAppMasterPassword');
   $('appCurrentPasswordRow').classList.toggle('hidden',!appGate.configured);
   $('appCurrentPassword').required = appGate.configured;
   $('appCurrentPassword').disabled = !appGate.configured;
@@ -89,13 +89,13 @@ function wireAppSecurity() {
     const fields = ['appCurrentPassword','appNewPassword','appNewPasswordConfirm'].map($);
     const [current,next,confirm] = fields.map(field => field.value);
     const feedback = $('appSettingsFeedback');
-    if (next !== confirm) { feedback.textContent = '兩次輸入的 App 主密碼不同'; return; }
+    if (next !== confirm) { feedback.textContent = tr('appPasswordMismatch'); return; }
     button.disabled = true;
     try {
       updateAppSecurity(await invoke('app_security_password',{current,next}));
       fields.forEach(field => { field.value = ''; });
       $('appPasswordSettings').open = false;
-      feedback.textContent = '已儲存 App 主密碼';
+      feedback.textContent = tr('appPasswordSaved');
     } catch (error) { feedback.textContent = String(error); }
     finally { button.disabled = false; }
   };
@@ -108,7 +108,7 @@ function wireAppSecurity() {
     button.disabled = true;
     try {
       updateAppSecurity(await invoke('app_security_idle',{minutes:$('appIdleMinutes').valueAsNumber}));
-      feedback.textContent = '已儲存自動鎖定設定';
+      feedback.textContent = tr('autoLockSaved');
     } catch (error) { feedback.textContent = String(error); }
     finally { button.disabled = !appGate.configured; }
   };

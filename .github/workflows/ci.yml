@@ -38,3 +38,7 @@ jobs:
         run: node --check frontend/vault-ui.js
       - name: Check app-security.js syntax
         run: node --check frontend/app-security.js
+      - name: Check i18n and locale keys
+        run: |
+          node --check frontend/i18n.js
+          node -e "global.window={};require('./frontend/locales/zh-TW.js');require('./frontend/locales/en.js');const a=Object.keys(window.I18N['zh-TW']),b=Object.keys(window.I18N.en);const m=a.filter(k=>!b.includes(k)).concat(b.filter(k=>!a.includes(k)));if(m.length){console.error('mismatched keys:',m);process.exit(1)}"

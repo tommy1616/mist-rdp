@@ -30,7 +30,7 @@ function saveProfileView(profile) {
 }
 
 async function initializeVaults(localStatus, profiles) {
-  state.vaults.set(LOCAL_VAULT, { id:LOCAL_VAULT, name:'本機', status:localStatus });
+  state.vaults.set(LOCAL_VAULT, { id:LOCAL_VAULT, name:tr('local'), status:localStatus });
   profiles.forEach(saveProfileView);
   await Promise.all([...state.vaults.values()].filter(v => v.status.exists).map(async vault => {
     const data = await invoke('vault_try_auto_unlock', vaultArgs(vault.id)).catch(() => null);
@@ -60,9 +60,9 @@ function openVaultGate(mode) {
 function prepareVaultGate(mode) {
   const select = $('gateMode');
   const locked = [...state.vaults.values()].filter(v => v.config && !v.data);
-  select.replaceChildren(new Option('本機保管庫',LOCAL_VAULT),
-    ...locked.map(v => new Option(`解鎖 ${v.name}`,v.id)),
-    new Option('連線既有 WebDAV 保管庫','webdav'), new Option('建立 WebDAV 保管庫','create_webdav'));
+  select.replaceChildren(new Option(tr('localVault'),LOCAL_VAULT),
+    ...locked.map(v => new Option(tr('unlockNamed',{name:v.name}),v.id)),
+    new Option(tr('connectAnExistingWebdav'),'webdav'), new Option(tr('createAWebdavVault'),'create_webdav'));
   select.value = mode || (getVault(LOCAL_VAULT)?.status.exists ? LOCAL_VAULT : locked[0]?.id || LOCAL_VAULT);
   for (const id of ['gateDavName','gateDavUrl','gateDavUser','gateDavPwd','gateDavFile','gatePwd','gatePwdConfirm']) $(id).value = '';
   $('gateDavInsecure').checked = false;
@@ -76,8 +76,8 @@ function updateGateMode() {
   const remote = isNewWebDav();
   const create = mode === 'create_webdav' || (mode === LOCAL_VAULT && !getVault(LOCAL_VAULT)?.status.exists);
   const name = getVault(mode)?.name;
-  $('gateTitle').textContent = remote ? (create ? '建立 WebDAV 保管庫' : '連線既有 WebDAV 保管庫') : `${create ? '建立' : '解鎖'}${name || ''}保管庫`;
-  $('btnGateSubmit').textContent = create ? '建立保管庫' : remote ? '連線並解鎖' : '解鎖';
+  $('gateTitle').textContent = remote ? (create ? tr('createAWebdavVault') : tr('connectAnExistingWebdav')) : tr(create ? 'createNamedVault' : 'unlockNamedVault', { name: name || tr('local') });
+  $('btnGateSubmit').textContent = create ? tr('createVault') : remote ? tr('connectAndUnlock') : tr('unlock');
   $('gateDavFields').classList.toggle('hidden', !remote);
   $('gateDavFields').disabled = !remote;
   $('gateConfirmWrap').classList.toggle('hidden', !create);
@@ -110,8 +110,8 @@ async function submitVaultGate(event) {
   const controls = [submit,$('gateMode'),$('btnGateImport'),$('btnGateBack'),$('btnGateTest')];
   $('gateError').classList.add('hidden');
   try {
-    if (create && [...pass].length < 4) throw new Error('保管庫密碼至少 4 碼');
-    if (create && pass !== $('gatePwdConfirm').value) throw new Error('兩次密碼不一致');
+    if (create && [...pass].length < 4) throw new Error(tr('passwordMin4'));
+    if (create && pass !== $('gatePwdConfirm').value) throw new Error(tr('passwordMismatch'));
     controls.forEach(el => { el.disabled = true; });
     const credentials = { masterPassword:pass, rememberKeychain:state.gateRemember };
     let data;
@@ -155,27 +155,27 @@ function renderSidebarGroups() {
   $('navHostCount').textContent = unlockedVaults().reduce((n,v) => n + v.data.hosts.length, 0);
   const branch = (vault) => {
     const id = escapeHtml(vault.id);
-    const name = escapeHtml(vault.config ? vault.name : '本機保管庫');
+    const name = escapeHtml(vault.config ? vault.name : tr('localVault'));
     const expanded = Boolean(vault.data) && !state.collapsedVaults.has(vault.id);
-    const groups = [...sortGroups(vault), { id:UNGROUPED, name:'未分組' }];
+    const groups = [...sortGroups(vault), { id:UNGROUPED, name:tr('ungrouped') }];
     const children = groups.map(group => {
       const total = vault.data?.hosts.filter(h => (h.group_id || UNGROUPED) === group.id).length || 0;
       return `<button class="nav-item${active(vault.id,group.id) ? ' active' : ''}" data-vault="${id}" data-group="${escapeHtml(group.id)}"><span class="nav-left">${folderIcon}<span>${escapeHtml(group.name)}</span></span><span class="nav-count">${total}</span></button>`;
     }).join('');
-    return `<div class="vault-tree-branch"><button class="nav-item${active(vault.id) ? ' active' : ''}" data-vault="${id}"><span class="nav-left">${vaultIcon(vault.config)}<span title="${name}">${name}</span></span><span class="nav-count">${vault.data ? vault.data.hosts.length : '鎖定'}</span></button>${vault.data ? `<button type="button" class="vault-tree-toggle" data-collapse-vault="${id}" aria-expanded="${expanded}" aria-label="${expanded ? '收合' : '展開'} ${name}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m7 10 5 5 5-5"/></svg></button>` : ''}</div>${expanded ? `<div class="vault-tree-children">${children}</div>` : ''}`;
+    return `<div class="vault-tree-branch"><button class="nav-item${active(vault.id) ? ' active' : ''}" data-vault="${id}"><span class="nav-left">${vaultIcon(vault.config)}<span title="${name}">${name}</span></span><span class="nav-count">${vault.data ? vault.data.hosts.length : tr('lockedShort')}</span></button>${vault.data ? `<button type="button" class="vault-tree-toggle" data-collapse-vault="${id}" aria-expanded="${expanded}" aria-label="${expanded ? tr('collapse') : tr('expand')} ${name}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m7 10 5 5 5-5"/></svg></button>` : ''}</div>${expanded ? `<div class="vault-tree-children">${children}</div>` : ''}`;
   };
   const local = getVault(LOCAL_VAULT);
   const remotes = [...state.vaults.values()].filter(v => v.config);
-  $('groupNavList').innerHTML = `${local ? `<h2 class="vault-tree-heading">本機</h2>${branch(local)}` : ''}<h2 class="vault-tree-heading">遠端</h2>${remotes.map(branch).join('')}`;
+  $('groupNavList').innerHTML = `${local ? `<h2 class="vault-tree-heading">${tr('local')}</h2>${branch(local)}` : ''}<h2 class="vault-tree-heading">${tr('remote')}</h2>${remotes.map(branch).join('')}`;
 }
 
 function renderHostCard(host, vaultId) {
   const address = host.port && host.port !== 3389 ? `${host.address}:${host.port}` : host.address;
   const username = host.username ? (host.domain ? `${host.domain}\\${host.username}` : host.username) : '—';
-  const share = host.shared_folder ? '<span class="tag accent">共享</span>' : '';
+  const share = host.shared_folder ? `<span class="tag accent">${tr('shared')}</span>` : '';
   return `<article class="host-card" data-host-card="${escapeHtml(host.id)}" data-owner="${escapeHtml(vaultId)}">
     <div class="host-top"><div><div class="host-name">${vaultIcon(false)} ${escapeHtml(host.name)}</div><div class="host-addr">${escapeHtml(address)}</div></div><div class="host-tags">${share}<span class="tag">${escapeHtml(resolutionLabel(host.width,host.height))}</span></div></div>
-    <div class="host-meta"><span class="host-user">${escapeHtml(username)}</span><div class="host-actions"><button class="btn btn-sm" data-host-action="edit">編輯</button><button class="btn btn-sm btn-danger" data-host-action="delete">刪除</button><button class="btn btn-sm btn-primary" data-host-action="connect">連線</button></div></div></article>`;
+    <div class="host-meta"><span class="host-user">${escapeHtml(username)}</span><div class="host-actions"><button class="btn btn-sm" data-host-action="edit">${tr('edit')}</button><button class="btn btn-sm btn-danger" data-host-action="delete">${tr('delete')}</button><button class="btn btn-sm btn-primary" data-host-action="connect">${tr('connect')}</button></div></div></article>`;
 }
 
 function renderHosts() {
@@ -183,26 +183,26 @@ function renderHosts() {
   const open = Boolean(vault?.data);
   if (open && state.activeGroup && state.activeGroup !== UNGROUPED && !vault.data.groups.some(g => g.id === state.activeGroup)) state.activeGroup = null;
   const group = vault?.data?.groups.find(g => g.id === state.activeGroup);
-  const groupName = group?.name || (state.activeGroup === UNGROUPED ? '未分組' : null);
+  const groupName = group?.name || (state.activeGroup === UNGROUPED ? tr('ungrouped') : null);
   const list = vault ? [vault] : unlockedVaults();
   const hostsFor = (v) => (v.data?.hosts || []).filter(h => !state.activeGroup || (h.group_id || UNGROUPED) === state.activeGroup);
   const count = list.reduce((n,v) => n + hostsFor(v).length,0);
-  $('hostsTitle').textContent = groupName || vault?.name || '全部主機';
-  $('hostsCaption').textContent = vault && !open ? '保管庫已鎖定' : `${groupName ? `${vault.name} / ${groupName} · ` : ''}${count} 台主機${vault ? '' : ` · ${list.length} 個已解鎖保管庫`}`;
+  $('hostsTitle').textContent = groupName || vault?.name || tr('allHosts');
+  $('hostsCaption').textContent = vault && !open ? tr('vaultLocked') : `${groupName ? `${vault.name} / ${groupName} · ` : ''}${tr('hostCount', { count })}${vault ? '' : tr('unlockedVaultCount', { n: list.length })}`;
   for (const [id,show] of Object.entries({ btnNewGroup:open, btnRenameGroup:!!group, btnDeleteGroup:!!group,
     btnNewHost:!vault || open, btnUnlockVault:!!vault && !open, btnLockVault:open, btnSidebarSync:open && !!vault.config })) {
     $(id).classList.toggle('hidden', !show);
   }
   $('btnSidebarSync').disabled = Boolean(vault?.syncRunning);
   $('hostEmpty').classList.toggle('hidden', !vault || open);
-  $('hostEmpty').textContent = '解鎖後即可查看此保管庫';
+  $('hostEmpty').textContent = tr('unlockToView');
   $('hostGrid').innerHTML = list.filter(v => v.data).map(v => {
     const hosts = hostsFor(v);
-    const groups = [...sortGroups(v), {id:UNGROUPED,name:'未分組'}].filter(g => !state.activeGroup || g.id === state.activeGroup);
+    const groups = [...sortGroups(v), {id:UNGROUPED,name:tr('ungrouped')}].filter(g => !state.activeGroup || g.id === state.activeGroup);
     return `<section class="vault-lane"><header><h3>${vaultIcon(v.config)} ${escapeHtml(v.name)}</h3><span class="nav-count">${hosts.length}</span></header>${groups.map(g => {
       const cards = hosts.filter(h => (h.group_id || UNGROUPED) === g.id).map(h => renderHostCard(h,v.id)).join('');
       return cards ? `<h4>${escapeHtml(g.name)}</h4>${cards}` : '';
-    }).join('') || '<p class="vault-empty">尚無主機</p>'}</section>`;
+    }).join('') || `<p class="vault-empty">${tr('noHostsYet')}</p>`}</section>`;
   }).join('');
 }
 
@@ -229,12 +229,12 @@ function renderVaultSettings() {
   $('webdavList').innerHTML = [...state.vaults.values()].filter(v => v.config).map(v => {
     const cfg = v.config;
     const address = `${cfg.webdav_url.replace(/\/+$/,'')}/${cfg.webdav_file_name}`;
-    const status = v.syncRunning ? '同步中…' : v.syncError || (cfg.last_sync_status && v.data ? cfg.last_sync_status : v.data ? '已解鎖' : '已鎖定');
+    const status = v.syncRunning ? tr('syncing') : v.syncError || (cfg.last_sync_status && v.data ? cfg.last_sync_status : v.data ? tr('unlockedState') : tr('lockedState'));
     return `<div class="webdav-row" data-profile="${escapeHtml(v.id)}"><div><strong>${escapeHtml(v.name)}</strong><div class="vault-caption vault-mono">${escapeHtml(address)}</div><div class="vault-caption" role="status">${escapeHtml(v.testResult || status)}</div></div><div class="vault-actions">
-      <button class="btn btn-sm" data-profile-action="test"${v.testRunning?' disabled':''}>測試連線</button><button class="btn btn-sm" data-profile-action="edit">編輯</button>
-      ${v.data ? `<button class="btn btn-sm" data-profile-action="sync"${v.syncRunning?' disabled':''}>立即同步</button>` : ''}
-      <button class="btn btn-sm" data-profile-action="${v.data?'lock':'unlock'}">${v.data?'鎖定':'解鎖'}</button></div></div>`;
-  }).join('') || '<p class="vault-caption">尚未新增 WebDAV 保管庫</p>';
+      <button class="btn btn-sm" data-profile-action="test"${v.testRunning?' disabled':''}>${tr('testConnection')}</button><button class="btn btn-sm" data-profile-action="edit">${tr('edit')}</button>
+      ${v.data ? `<button class="btn btn-sm" data-profile-action="sync"${v.syncRunning?' disabled':''}>${tr('syncNow')}</button>` : ''}
+      <button class="btn btn-sm" data-profile-action="${v.data?'lock':'unlock'}">${v.data?tr('lock'):tr('unlock')}</button></div></div>`;
+  }).join('') || `<p class="vault-caption">${tr('noWebdavVaults')}</p>`;
 }
 
 function openWebDavEditor(vault) {
@@ -245,7 +245,7 @@ function openWebDavEditor(vault) {
   $('editDavTarget').textContent = `${cfg.webdav_url}/${cfg.webdav_file_name}`;
   $('editDavUser').value = cfg.webdav_username;
   $('editDavPwd').value = '';
-  $('editDavPwd').placeholder = cfg.has_webdav_password ? '已儲存，留空維持原密碼' : '選填';
+  $('editDavPwd').placeholder = cfg.has_webdav_password ? tr('passwordSavedKeep') : tr('optional');
   $('editDavForget').checked = false;
   $('editDavInsecure').checked = cfg.webdav_allow_invalid_certs;
   $('editDavFeedback').textContent = '';
@@ -263,7 +263,7 @@ function editConnectionInput(vault) {
 async function testConnection(button, label, args) {
   if (button.disabled) return;
   button.disabled = true;
-  label.textContent = '測試連線中…';
+  label.textContent = tr('testing');
   try { label.textContent = await invoke('sync_test_connection',args); }
   catch (e) { label.textContent = String(e); }
   finally { button.disabled = false; }
@@ -283,7 +283,7 @@ async function lockVault(id) {
 }
 
 function updateHostGroupOptions(vaultId, selected) {
-  const groups = [...sortGroups(getVault(vaultId)), {id:'',name:'未分組'}];
+  const groups = [...sortGroups(getVault(vaultId)), {id:'',name:tr('ungrouped')}];
   $('hostGroup').replaceChildren(...groups.map(g => new Option(g.name,g.id)));
   $('hostGroup').value = groups.some(g => g.id === selected) ? selected : '';
 }
@@ -369,7 +369,7 @@ function wireVaultUi() {
     else {
       try {
         applyVaultData(await invoke('vault_delete_host',{...vaultArgs(id),id:host.id}),id);
-        notify('已刪除主機');
+        notify(tr('hostDeleted'));
       } catch (e) { notify(String(e),true); }
     }
   };
@@ -403,7 +403,7 @@ function wireVaultUi() {
     if (action === 'edit') openWebDavEditor(vault);
     if (action === 'test' && !vault.testRunning) {
       vault.testRunning = true;
-      vault.testResult = '測試連線中…';
+      vault.testResult = tr('testing');
       renderVaultSettings();
       try { vault.testResult = await invoke('sync_test_connection',{vaultId:vault.id}); }
       catch (e) { vault.testResult = String(e); }

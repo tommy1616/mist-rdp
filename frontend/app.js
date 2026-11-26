@@ -1,7 +1,7 @@
 const invoke = window.__TAURI__?.core?.invoke;
 
 const RESOLUTION_PRESETS = [
-  { value: 'auto', label: '自動', w: 0, h: 0 },
+  { value: 'auto', get label() { return tr('auto'); }, w: 0, h: 0 },
   { value: '1280x720', label: '1280 × 720', w: 1280, h: 720 },
   { value: '1366x768', label: '1366 × 768', w: 1366, h: 768 },
   { value: '1600x900', label: '1600 × 900', w: 1600, h: 900 },
@@ -25,7 +25,7 @@ const state = {
   sharePresets: [],
   activeNav: 'hosts',
   activeGroup: null,
-  tabs: [{ id: 'home', type: 'home', title: '主機' }],
+  tabs: [{ id: 'home', type: 'home', title: tr('hosts') }],
   activeTabId: 'home',
   sessions: new Map(),
   pendingPrompt: null,
@@ -95,15 +95,15 @@ function populateResolutionSelects() {
   ).join('');
   $('quickRes').innerHTML = baseOpts;
   $('hudResSelect').innerHTML = baseOpts;
-  $('hostResPreset').innerHTML = baseOpts + `<option value="custom">自訂</option>`;
+  $('hostResPreset').innerHTML = baseOpts + `<option value="custom">${tr('custom')}</option>`;
 }
 
 function populateSharePresets() {
-  const opts = [`<option value="">不共享</option>`];
+  const opts = [`<option value="">${tr('notShared')}</option>`];
   for (const p of state.sharePresets) {
     opts.push(`<option value="${escapeHtml(p.path)}">${escapeHtml(p.label)}</option>`);
   }
-  opts.push(`<option value="__custom__">自訂路徑</option>`);
+  opts.push(`<option value="__custom__">${tr('customPath')}</option>`);
   $('hostSharePreset').innerHTML = opts.join('');
 }
 
@@ -125,7 +125,7 @@ function resolveRequestedSize(w, h) {
 }
 
 function resolutionLabel(w, h) {
-  return w >= 640 && h >= 480 ? `${w}×${h}` : '自動';
+  return w >= 640 && h >= 480 ? `${w}×${h}` : tr('auto');
 }
 
 function presetForSize(w, h) {
@@ -161,11 +161,11 @@ function syncHookToggleUi(sess) {
   const on = Boolean(sess.hookEnabled);
   titleBtn?.classList.remove('hidden');
   titleBtn?.classList.toggle('on', on);
-  if (titleLabel) titleLabel.textContent = on ? '快捷鍵：遠端' : '快捷鍵：本機';
+  if (titleLabel) titleLabel.textContent = on ? tr('shortcutsRemote') : tr('hotkeyLocal');
   if (titleBtn) {
     titleBtn.title = on
-      ? '系統快捷鍵（Alt+Tab / Win）轉送至遠端，點擊改為本機切換'
-      : '系統快捷鍵留在本機（Alt+Tab 切換本機視窗），點擊改為轉送遠端';
+      ? tr('systemShortcutsAltTab')
+      : tr('hotkeyLocalTip');
   }
 }
 
@@ -178,8 +178,8 @@ function syncLosslessToggleUi(sess) {
   const on = Boolean(sess.losslessQuality);
   btn.classList.toggle('on', on);
   btn.title = on
-    ? '無損 32-bit 清晰畫質，點擊切換為 RemoteFX 省頻寬模式'
-    : '目前為 RemoteFX 省頻寬模式，點擊切回無損 32-bit 清晰畫質';
+    ? tr('lossless32BitQuality')
+    : tr('lossyTip');
 }
 
 function syncAudioToggleUi(sess) {
@@ -189,9 +189,9 @@ function syncAudioToggleUi(sess) {
   if (!btn || !sess) return;
   const on = Boolean(sess.audioEnabled);
   btn.classList.toggle('on', on);
-  btn.title = on ? '聲音已開啟，點擊靜音' : '聲音已靜音，點擊開啟';
+  btn.title = on ? tr('soundOnTip') : tr('soundOffTip');
   if (icon) icon.innerHTML = on ? AUDIO_SVG_ON : AUDIO_SVG_OFF;
-  if (text) text.textContent = on ? '聲音' : '靜音';
+  if (text) text.textContent = on ? tr('sound') : tr('muted');
 }
 
 async function toggleActiveLosslessMode() {
@@ -210,7 +210,7 @@ async function toggleActiveLosslessMode() {
     } catch (_) {}
   }
 
-  notify(sess.losslessQuality ? '已開啟無損畫質，重新連線中' : '已切換為省頻寬模式，重新連線中');
+  notify(sess.losslessQuality ? tr('losslessOn') : tr('lossyOn'));
   await reconnectSessionInPlace(sess);
 }
 
@@ -220,7 +220,7 @@ function toggleActiveAudio() {
   sess.audioEnabled = !sess.audioEnabled;
   invoke?.('rdp_set_audio_enabled', { sessionId: sess.id, enabled: sess.audioEnabled });
   syncAudioToggleUi(sess);
-  notify(sess.audioEnabled ? '遠端聲音已開啟' : '遠端聲音已靜音');
+  notify(sess.audioEnabled ? tr('remoteSoundOn') : tr('remoteSoundOff'));
   setTimeout(() => sess.canvas?.focus(), 10);
 }
 
@@ -230,7 +230,7 @@ function toggleActiveHookMode() {
   sess.hookEnabled = !sess.hookEnabled;
   invoke?.('set_keyboard_hook', { enabled: sess.hookEnabled });
   syncHookToggleUi(sess);
-  notify(sess.hookEnabled ? '快捷鍵已改為轉送遠端' : '快捷鍵已改為留在本機');
+  notify(sess.hookEnabled ? tr('hotkeysRemoteNow') : tr('hotkeysLocalNow'));
   setTimeout(() => sess.canvas?.focus(), 10);
 }
 
@@ -265,7 +265,7 @@ function scheduleHudCollapse(delayMs = 850) {
 
 function syncHudPinUi() {
   $('btnHudPin').classList.toggle('on', state.hudPinned);
-  $('btnHudPin').title = state.hudPinned ? '已釘選工具列（點擊改為自動隱藏）' : '自動隱藏工具列（點擊釘選）';
+  $('btnHudPin').title = state.hudPinned ? tr('hudPinned') : tr('hudAuto');
   if (state.hudPinned) {
     showHud();
   } else {
@@ -368,7 +368,7 @@ async function bootstrap() {
     if (sess) {
       sess.hookEnabled = enabled;
       syncHookToggleUi(sess);
-      notify(enabled ? '快捷鍵已改為轉送遠端' : '已切回本機快捷鍵');
+      notify(enabled ? tr('hotkeysRemoteNow') : tr('hotkeysBackLocal'));
     }
   });
   window.__TAURI__?.event?.listen?.('show-hud', () => {
@@ -642,7 +642,7 @@ function handleSessionStatus(payload) {
   if (payload.rtt_ms != null) sess.rttMs = payload.rtt_ms;
 
   if (payload.state === 'error' && payload.code === 'AUTH_FAILED') {
-    notify(payload.message || '帳號或密碼錯誤', true);
+    notify(payload.message || tr('badCredentials'), true);
   }
 
   renderTabs();
@@ -686,7 +686,7 @@ function applyFullscreenUi(fs) {
   state.isFullscreen = Boolean(fs);
   document.body.classList.toggle('is-fullscreen', state.isFullscreen);
   $('btnHudFullscreen').classList.toggle('on', state.isFullscreen);
-  $('btnHudFullscreen').title = state.isFullscreen ? '離開全螢幕' : '全螢幕';
+  $('btnHudFullscreen').title = state.isFullscreen ? tr('exitFullscreen') : tr('fullscreen');
 }
 
 async function toggleFullscreen() {
@@ -811,7 +811,7 @@ function renderActiveRdpChrome(sess) {
 
   const rtt = sess.rttMs != null ? ` · ${sess.rttMs}ms` : '';
   $('hudTelemetry').textContent =
-    sess.state === 'connected' ? `${sess.fbW}×${sess.fbH}${rtt}` : (sess.state === 'connecting' ? '連線中' : '已斷線');
+    sess.state === 'connected' ? `${sess.fbW}×${sess.fbH}${rtt}` : (sess.state === 'connecting' ? tr('connecting') : tr('disconnectedState'));
 
   const overlay = $('sessionOverlay');
   const card = $('overlayCard');
@@ -829,8 +829,8 @@ function renderActiveRdpChrome(sess) {
     $('btnOverlayReprompt').classList.toggle('hidden', !isAuthError);
     $('btnOverlayRetry').classList.toggle('hidden', isAuthError);
     $('overlayTitle').textContent = isConnecting
-      ? '連線中...'
-      : (isAuthError ? (sess.message || '帳號或密碼錯誤') : '連線中斷');
+      ? tr('connecting2')
+      : (isAuthError ? (sess.message || tr('badCredentials')) : tr('connectionLost'));
     $('overlayMsg').textContent = isAuthError ? `${sess.params.host}${sess.params.port !== 3389 ? ':' + sess.params.port : ''}` : (sess.message || '');
   }
 }
@@ -965,7 +965,7 @@ async function connectSessionTransport(sess, width, height) {
     sess.state = 'error';
     const msg = String(err);
     sess.code = (msg === 'NEED_PASSWORD' || msg === 'NEED_CREDENTIALS') ? 'AUTH_FAILED' : 'ERROR';
-    sess.message = msg === 'NEED_PASSWORD' ? '請輸入密碼' : msg;
+    sess.message = msg === 'NEED_PASSWORD' ? tr('enterPassword') : msg;
     renderTabs();
     if (state.activeTabId === sess.id) {
       renderActiveRdpChrome(sess);
@@ -1351,7 +1351,7 @@ function wireUiEvents() {
     sess.requestedH = preset ? preset.h : 0;
     sess.lastAutoResize = null;
     invoke?.('rdp_resize', { sessionId: sess.id, width: w, height: h });
-    notify(`解析度 ${w}×${h}`);
+    notify(tr('resolutionValue', { w, h }));
     setTimeout(() => sess.canvas?.focus(), 20);
   };
   $('btnHudMinimize').onclick = () => {
@@ -1382,7 +1382,7 @@ function wireUiEvents() {
 
     openPromptModal({
       title: params.title,
-      errorMsg: sess.message || '帳號或密碼錯誤',
+      errorMsg: sess.message || tr('badCredentials'),
       needUser: true,
       defaultUser: params.username || savedHost?.username || '',
       canUpdateSaved: Boolean(savedHost && savedHost.save_password),
@@ -1419,7 +1419,7 @@ function updateNavPanels() {
 
 function doQuickConnect() {
   const address = $('quickAddr').value.trim();
-  if (!address) { notify('請輸入主機位址', true); return; }
+  if (!address) { notify(tr('enterHostAddress'), true); return; }
   const portVal = parseInt($('quickPort').value.trim(), 10);
   const port = portVal > 0 && portVal <= 65535 ? portVal : 3389;
   const preset = RESOLUTION_PRESETS.find((p) => p.value === $('quickRes').value);
@@ -1445,8 +1445,8 @@ function syncHostPwdToggle(hadPwd = false) {
   $('toggleHostSavePwd').classList.toggle('on', state.hostSavePwd);
   $('hostPwd').disabled = !state.hostSavePwd;
   $('hostPwd').placeholder = !state.hostSavePwd
-    ? '連線時詢問'
-    : (hadPwd ? '留空維持原密碼' : '');
+    ? tr('askOnConnect')
+    : (hadPwd ? tr('keepPassword') : '');
 }
 
 function openGroupDialog(action) {
@@ -1458,13 +1458,13 @@ function openGroupDialog(action) {
   dialog.dataset.vault = vault.id;
   dialog.dataset.id = action === 'create' ? '' : group.id;
   dialog.dataset.action = action;
-  $('groupDialogTitle').textContent = { create: '新增群組', rename: '改名', delete: '刪除群組' }[action];
+  $('groupDialogTitle').textContent = { create: tr('newGroup'), rename: tr('rename'), delete: tr('deleteGroup') }[action];
   $('groupNameField').classList.toggle('hidden', deleting);
   $('groupName').disabled = deleting;
   $('groupName').value = action === 'rename' ? group.name : '';
   $('groupDeleteInfo').classList.toggle('hidden', !deleting);
-  $('groupDeleteInfo').textContent = deleting ? `刪除「${group.name}」後，群組內的主機會移到「未分組」` : '';
-  $('btnGroupSubmit').textContent = deleting ? '刪除群組' : '儲存';
+  $('groupDeleteInfo').textContent = deleting ? tr('deleteGroupInfo', { name: group.name }) : '';
+  $('btnGroupSubmit').textContent = deleting ? tr('deleteGroup') : tr('save');
   $('groupError').classList.add('hidden');
   dialog.showModal();
   setModalOpenFlag(true);
@@ -1472,7 +1472,7 @@ function openGroupDialog(action) {
 }
 
 function openHostModal(host) {
-  $('hostModalTitle').textContent = host ? '編輯主機' : '新增主機';
+  $('hostModalTitle').textContent = host ? tr('editHost') : tr('newHost');
   $('hostId').value = host ? host.id : '';
   $('hostName').value = host ? host.name : '';
   $('hostAddr').value = host ? host.address : '';
@@ -1529,7 +1529,7 @@ function openHostModal(host) {
 
 async function saveHostModal() {
   const address = $('hostAddr').value.trim();
-  if (!address) { notify('請填寫位址', true); return; }
+  if (!address) { notify(tr('enterAddress'), true); return; }
 
   const portRaw = $('hostPort').value.trim();
   const portParsed = portRaw ? parseInt(portRaw, 10) : 3389;
@@ -1553,7 +1553,7 @@ async function saveHostModal() {
 
   try {
     const vaultId = $('hostVault').value;
-    if (!getVault(vaultId)?.data) throw new Error('請先解鎖要儲存的保管庫');
+    if (!getVault(vaultId)?.data) throw new Error(tr('unlockTargetFirst'));
     const data = await invoke('vault_save_host', {
       ...vaultArgs(vaultId),
       input: {
@@ -1577,7 +1577,7 @@ async function saveHostModal() {
     applyVaultData(data,vaultId);
     $('hostModal').classList.remove('open');
     setModalOpenFlag(false);
-    notify('已儲存');
+    notify(tr('saved'));
   } catch (e) { notify(String(e), true); }
 }
 
@@ -1603,7 +1603,7 @@ function submitPromptModal() {
   const cfg = state.pendingPrompt;
   const username = $('promptUser').value.trim();
   const password = $('promptPwd').value;
-  if (cfg.needUser && !username) { notify('請輸入帳號', true); return; }
+  if (cfg.needUser && !username) { notify(tr('enterUsername'), true); return; }
   $('promptModal').classList.remove('open');
   setModalOpenFlag(false);
   state.pendingPrompt = null;
@@ -1620,14 +1620,14 @@ async function exportVault() {
     a.download = 'mist-rdp.vault.json';
     a.click();
     URL.revokeObjectURL(url);
-    notify('已匯出');
+    notify(tr('exported'));
   } catch (e) { notify(String(e), true); }
 }
 
 async function confirmImportVault() {
   const file = $('importFile').files?.[0];
   const pwd = $('importPwd').value;
-  if (!file || !pwd) { notify('請選擇檔案並輸入保管庫密碼', true); return; }
+  if (!file || !pwd) { notify(tr('chooseFileAndPassword'), true); return; }
   try {
     const jsonStr = await file.text();
     const data = await invoke('vault_import_json', { jsonStr, masterPassword: pwd });
@@ -1636,7 +1636,7 @@ async function confirmImportVault() {
     $('importModal').classList.remove('open');
     setModalOpenFlag(false);
     $('importPwd').value = '';
-    notify('已匯入');
+    notify(tr('imported'));
   } catch (e) { notify(String(e), true); }
 }
 
@@ -1648,5 +1648,20 @@ function escapeHtml(s) {
     .replace(/"/g, '&quot;');
 }
 
+
+window.addEventListener('i18n-changed', () => {
+  const keep = ['quickRes', 'hudResSelect', 'hostResPreset', 'hostSharePreset'].map((id) => [id, $(id).value]);
+  state.tabs[0].title = tr('hosts');
+  const localVault = state.vaults.get(LOCAL_VAULT);
+  if (localVault) localVault.name = tr('local');
+  populateResolutionSelects();
+  populateSharePresets();
+  keep.forEach(([id, v]) => { $(id).value = v; });
+  renderTabs();
+  updateAppSecurity({});
+  renderVaultWorkspace();
+  const sess = state.sessions.get(state.activeTabId);
+  if (sess) renderActiveRdpChrome(sess);
+});
 
 bootstrap().catch(error => notify(String(error),true));
