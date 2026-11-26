@@ -91,6 +91,9 @@ pub struct KeyboardHookState {
     pub rwin_held: AtomicBool,
     /// True when we synthesized a remote LAlt down for Alt+PageUp/PageDown while in local-shortcut mode.
     pub synth_remote_alt: AtomicBool,
+    /// True while a local Alt+Tab switch started by Ctrl+Alt+Tab (remote-shortcut mode) is in
+    /// progress; every key stays on the host until the physical Alt key is released.
+    pub local_switch_active: AtomicBool,
     pub swallowed: SwallowedKeySet,
     /// Keys swallowed solely for client-side mstsc meta-actions (keyup suppressed without remote release).
     pub suppressed_only: SwallowedKeySet,
@@ -118,6 +121,7 @@ impl KeyboardHookState {
             lwin_held: AtomicBool::new(false),
             rwin_held: AtomicBool::new(false),
             synth_remote_alt: AtomicBool::new(false),
+            local_switch_active: AtomicBool::new(false),
             swallowed: SwallowedKeySet::new(),
             suppressed_only: SwallowedKeySet::new(),
             active_session: Mutex::new(None),
@@ -341,9 +345,10 @@ mod platform {
     use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
     use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
     use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
-        GetAsyncKeyState, VK_ADD, VK_CANCEL, VK_CONTROL, VK_DELETE, VK_END, VK_HOME, VK_INSERT,
-        VK_LCONTROL, VK_LMENU, VK_LSHIFT, VK_LWIN, VK_MENU, VK_NEXT, VK_PAUSE, VK_PRIOR,
-        VK_RCONTROL, VK_RMENU, VK_RSHIFT, VK_RWIN, VK_SHIFT, VK_SUBTRACT,
+        GetAsyncKeyState, SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP,
+        VK_ADD, VK_CANCEL, VK_CONTROL, VK_DELETE, VK_END, VK_HOME, VK_INSERT, VK_LCONTROL,
+        VK_LMENU, VK_LSHIFT, VK_LWIN, VK_MENU, VK_NEXT, VK_PAUSE, VK_PRIOR, VK_RCONTROL,
+        VK_RMENU, VK_RSHIFT, VK_RWIN, VK_SHIFT, VK_SUBTRACT, VK_TAB,
     };
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         CallNextHookEx, DispatchMessageW, GetForegroundWindow, GetMessageW,
@@ -368,6 +373,63 @@ mod platform {
         fg_pid != 0 && fg_pid == std::process::id()
     }
 
+    /// Marks key events this hook injects itself so they are never forwarded to the remote.
+    const SELF_INJECTED_MARKER: usize = 0x4D52_4450;
+
+    fn inject_local_key(vk: u16, up: bool) -> INPUT {
+        INPUT {
+            r#type: INPUT_KEYBOARD,
+            Anonymous: INPUT_0 {
+                ki: KEYBDINPUT {
+                    wVk: vk,
+                    wScan: 0,
+                    dwFlags: if up { KEYEVENTF_KEYUP } else { 0 },
+                    time: 0,
+                    dwExtraInfo: SELF_INJECTED_MARKER,
+                },
+            },
+        }
+    }
+
+    /// Ctrl+Alt+Tab in remote-shortcut mode: hand the Alt+Tab switch to the local desktop.
+    /// Ctrl/Alt were already forwarded to the remote, so release them there first, then press
+    /// Alt+Tab locally. The local Alt stays down until the user lets go of the physical Alt key,
+    /// which the hook then passes through untouched.
+    fn begin_local_app_switch(state: &KeyboardHookState) {
+        let modifiers: [(u16, u8, bool, &std::sync::atomic::AtomicBool); 4] = [
+            (VK_LCONTROL, 0x1D, false, &state.lctrl_held),
+            (VK_RCONTROL, 0x1D, true, &state.rctrl_held),
+            (VK_LMENU, 0x38, false, &state.lalt_held),
+            (VK_RMENU, 0x38, true, &state.ralt_held),
+        ];
+        let right_alt = state.ralt_held.load(Ordering::SeqCst)
+            && !state.lalt_held.load(Ordering::SeqCst);
+        for (vk, scancode, extended, held) in modifiers {
+            let was_swallowed = state.swallowed.take(vk as u8);
+            if held.swap(false, Ordering::SeqCst) || was_swallowed {
+                let _ = state.emit(HookKeyEvent {
+                    scancode,
+                    extended,
+                    pressed: false,
+                });
+            }
+        }
+        state.local_switch_active.store(true, Ordering::SeqCst);
+        let alt_vk = if right_alt { VK_RMENU } else { VK_LMENU };
+        let inputs = [
+            inject_local_key(alt_vk, false),
+            inject_local_key(VK_TAB, false),
+            inject_local_key(VK_TAB, true),
+        ];
+        unsafe {
+            SendInput(
+                inputs.len() as u32,
+                inputs.as_ptr(),
+                std::mem::size_of::<INPUT>() as i32,
+            );
+        }
+    }
+
     fn update_held_modifier(state: &KeyboardHookState, vk: u16, down: bool) {
         match vk {
             VK_LCONTROL => state.lctrl_held.store(down, Ordering::SeqCst),
@@ -390,6 +452,9 @@ mod platform {
         if code >= 0 {
             if let Some(state) = HOOK_STATE.get() {
                 let kb = unsafe { &*(lparam as *const KBDLLHOOKSTRUCT) };
+                if kb.dwExtraInfo == SELF_INJECTED_MARKER {
+                    return unsafe { CallNextHookEx(std::ptr::null_mut(), code, wparam, lparam) };
+                }
                 let vk = kb.vkCode as u16;
                 let vk_u8 = vk.min(255) as u8;
                 let msg = wparam as u32;
@@ -417,6 +482,25 @@ mod platform {
                             pressed: false,
                         });
                         return 1;
+                    }
+
+                    // 2b. A local Alt+Tab switch (started by Ctrl+Alt+Tab) owns the keyboard until
+                    // the physical Alt key is released.
+                    if state.local_switch_active.load(Ordering::SeqCst) {
+                        let alt_event = matches!(vk, VK_LMENU | VK_RMENU | VK_MENU);
+                        let local_alt_down =
+                            (unsafe { GetAsyncKeyState(VK_MENU as i32) } as u16 & 0x8000) != 0;
+                        if alt_event || local_alt_down {
+                            if released && alt_event {
+                                state.local_switch_active.store(false, Ordering::SeqCst);
+                            }
+                            return unsafe {
+                                CallNextHookEx(std::ptr::null_mut(), code, wparam, lparam)
+                            };
+                        }
+                        // Alt is no longer down locally (its release was missed): the switch is
+                        // over, so fall back to normal handling instead of trapping keys locally.
+                        state.local_switch_active.store(false, Ordering::SeqCst);
                     }
 
                     // 3. If physical Alt is released after a synthesized remote Alt+PageUp/PageDown,
@@ -478,6 +562,14 @@ mod platform {
                                 let _ = state.emit_action(action);
                                 return 1;
                             }
+                        }
+
+                        // 4b. Remote-shortcut mode only: Ctrl+Alt+Tab switches LOCAL windows, i.e. the
+                        // Alt+Tab that would otherwise be forwarded to the remote.
+                        if pressed && vk == VK_TAB && ctrl_down && alt_down && state.is_enabled() {
+                            state.suppressed_only.insert(vk_u8);
+                            begin_local_app_switch(state);
+                            return 1;
                         }
 
                         if canvas_live {

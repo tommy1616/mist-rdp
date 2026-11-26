@@ -10,7 +10,7 @@ Cross-platform (Windows & macOS Apple Silicon) multi-tab RDP client built with *
   - One-click true fullscreen hides the custom titlebar and stays synced with native OS fullscreen transitions.
   - Dynamic resolution negotiation (`DRDYNVC` Display Control) automatically fits the remote desktop to window/fullscreen resizing.
 - **Native System Shortcut Capture & Stuck-Key Protection**:
-  - Windows `WH_KEYBOARD_LL` hook forwards `Win`, `Win+E/R/D/L`, `Alt+Tab`, `Alt+F4`, `Ctrl+Esc`, and `PrintScreen` (`Ctrl+Alt+Pause` emergency release).
+  - Windows `WH_KEYBOARD_LL` hook forwards `Win`, `Win+E/R/D/L`, `Alt+Tab`, `Alt+F4`, `Ctrl+Esc`, and `PrintScreen` (`Ctrl+Alt+Pause` emergency release). In remote-shortcut mode, `Ctrl+Alt+Tab` switches local windows instead (local `Alt+Tab`).
   - macOS `CGEventTap` captures system hotkeys with optional `Command → Ctrl` mapping (`Ctrl+Option+Esc` emergency release).
   - Automatic modifier key release (LCtrl/RCtrl/LAlt/RAlt/LShift/RShift/LWin/RWin) on focus loss or tab switch.
 - **Bidirectional Clipboard**:
